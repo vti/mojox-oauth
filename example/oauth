@@ -20,7 +20,7 @@ my $three_legged_url = 'http://oauth-sandbox.sevengoslings.net/three_legged';
 
 use MojoX::Client::OAuth;
 
-my $oauth = MojoX::Client::OAuth->new;
+my $oauth = MojoX::Client::OAuth->new(async => 1);
 
 my $request_tokens = {};
 my $access_tokens = {};
@@ -33,7 +33,7 @@ get '/login' => sub {
 
     $self->pause;
 
-    $oauth->async->request_token(
+    $oauth->request_token(
         $request_token_url => {
             consumer_secret => $consumer_secret,
             params    => {
@@ -43,7 +43,10 @@ get '/login' => sub {
           } => sub {
             my $client = shift;
 
-            warn $client->res->body;
+            unless ($client->res->code eq 200) {
+                $self->render_text($client->res->body);
+                return $self->finish;
+            }
 
             my $params;
             $params = $client->res->body_params->parse($client->res->body);
@@ -77,7 +80,7 @@ get '/ready' => sub {
 
     $self->pause;
 
-    $oauth->async->access_token(
+    $oauth->access_token(
         $access_token_url => {
             consumer_secret => $consumer_secret,
             token_secret => $token_secret,
@@ -123,7 +126,7 @@ get '/resource' => sub {
 
     $self->pause;
 
-    $oauth->async->request_token(
+    $oauth->request_token(
         $three_legged_url => {
             consumer_secret => $consumer_secret,
             token_secret    => $token_secret,

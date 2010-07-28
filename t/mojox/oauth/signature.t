@@ -13,7 +13,7 @@ my $sig = MojoX::OAuth::Signature->new(
     url             => 'https://api.twitter.com/oauth/request_token',
     consumer_secret => 'MCD8BKwGdgPHvAuvgvz4EQpqDAtx89grbuNMRd7Eh98'
 );
-$sig->params->params(
+$sig->params(
     {   oauth_consumer_key => 'GDdmIQH6jhtmLUypg82g',
         oauth_callback =>
           'http://localhost:3005/the_dance/process_callback?service_provider_id=11',
@@ -34,7 +34,7 @@ $sig = MojoX::OAuth::Signature->new(
     consumer_secret => 'MCD8BKwGdgPHvAuvgvz4EQpqDAtx89grbuNMRd7Eh98',
     token_secret    => 'x6qpRnlEmW9JbQn4PQVVeVG8ZLPEx6A0TOebgwcuA',
 );
-$sig->params->params(
+$sig->params(
     {   oauth_consumer_key     => 'GDdmIQH6jhtmLUypg82g',
         oauth_token            => '8ldIZyxQeVrFZXFOZH5tAwj6vzJYuLQpl0WUEYtWc',
         oauth_signature_method => 'HMAC-SHA1',
@@ -59,7 +59,7 @@ $sig = MojoX::OAuth::Signature->new(
     #token_secret    => 'x6qpRnlEmW9JbQn4PQVVeVG8ZLPEx6A0TOebgwcuA',
     token_secret => 'J6zix3FfA9LofH0awS24M3HcBYXO5nI1iYe8EfBA',
 );
-$sig->params->params(
+$sig->params(
     {   oauth_consumer_key => 'GDdmIQH6jhtmLUypg82g',
         oauth_token => '819797-Jxq8aYUDRmykzVKrgoLhXSq67TEa5ruc4GJC2rWimw',
         oauth_signature_method => 'HMAC-SHA1',
@@ -68,7 +68,7 @@ $sig->params->params(
         oauth_version          => '1.0'
     }
 );
-$sig->params->params(
+$sig->params(
     {status => 'setting up my twitter 私のさえずりを設定する'});
 is($sig->base_string,
     'POST&http%3A%2F%2Fapi.twitter.com%2F1%2Fstatuses%2Fupdate.json&oauth_consumer_key%3DGDdmIQH6jhtmLUypg82g%26oauth_nonce%3DoElnnMTQIZvqvlfXM56aBLAf5noGD0AQR3Fmi7Q6Y%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D1272325550%26oauth_token%3D819797-Jxq8aYUDRmykzVKrgoLhXSq67TEa5ruc4GJC2rWimw%26oauth_version%3D1.0%26status%3Dsetting%2520up%2520my%2520twitter%2520%25E7%25A7%2581%25E3%2581%25AE%25E3%2581%2595%25E3%2581%2588%25E3%2581%259A%25E3%2582%258A%25E3%2582%2592%25E8%25A8%25AD%25E5%25AE%259A%25E3%2581%2599%25E3%2582%258B'

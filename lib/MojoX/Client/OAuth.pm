@@ -9,16 +9,11 @@ use Mojo::Client;
 use Mojo::ByteStream 'b';
 use MojoX::OAuth::Signature;
 
+__PACKAGE__->attr('async');
 __PACKAGE__->attr(client => sub { Mojo::Client->singleton });
 
 sub request_token { shift->_make_request('POST' => @_) }
 sub access_token  { shift->_make_request('POST' => @_) }
-
-sub async {
-    my $clone = shift->new;
-    $clone->{async} = 1;
-    return $clone;
-}
 
 sub _make_request {
     my $self = shift;
@@ -49,15 +44,21 @@ sub _make_request {
         consumer_secret => $settings->{consumer_secret},
         token_secret    => $settings->{token_secret}
     );
-    $signature->params->params($params);
 
+    # TODO query and body params
+    $signature->params($params);
+
+    use Data::Dumper;
     $params->{oauth_signature} = $signature->to_string;
+    warn Dumper $signature;
 
     $req->headers->header(Authorization => 'OAuth ' . join ',' =>
         map { $_ . '="' . b($params->{$_})->url_escape . '"' }
         sort keys %$params);
 
-    return $self->client->process($tx => $cb);
+    warn $req;
+
+    return $client->process($tx => $cb);
 }
 
 sub _nonce {

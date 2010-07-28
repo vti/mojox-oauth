@@ -7,12 +7,28 @@ use base 'Mojo::Base';
 use overload '""' => sub { shift->to_string }, fallback => 1;
 
 use Mojo::ByteStream 'b';
-use MojoX::OAuth::Parameters;
+use Mojo::Parameters;
 
 __PACKAGE__->attr(method => 'POST');
 __PACKAGE__->attr('url');
 __PACKAGE__->attr([qw/consumer_secret token_secret/] => '');
-__PACKAGE__->attr(params => sub { MojoX::OAuth::Parameters->new });
+__PACKAGE__->attr(_params => sub { Mojo::Parameters->new });
+
+sub params {
+    my $self = shift;
+
+    return $self->_params unless @_;
+
+    my $params = ref $_[0] && ref $_[0] eq 'HASH' ? $_[0] : {@_};
+
+    foreach my $key (keys %$params) {
+        next if $key eq 'realm';
+
+        $self->_params->append($key => $params->{$key});
+    }
+
+    return $self;
+}
 
 sub base_string {
     my $self = shift;
@@ -28,7 +44,28 @@ sub base_string {
     push @values, b($url)->url_escape;
 
     # Add params
-    push @values, b($self->params->to_string)->url_escape;
+    my $params = $self->params->to_hash;
+
+    # Preparing pairs
+    my @pairs;
+    foreach my $key (keys %$params) {
+        my $values = $params->{$key};
+        $values = [$values] unless ref $values eq 'ARRAY';
+
+        foreach my $v (@$values) {
+            $key = b($key)->url_escape->to_string;
+            $v   = b($v)->url_escape->to_string;
+            push @pairs, [$key, $v];
+        }
+    }
+
+    # Sorting pairs (first by name, then by value)
+    @pairs = sort { $a->[0] cmp $b->[0] || $a->[1] cmp $b->[1] } @pairs;
+
+    # Concatenating pairs
+    my $pairs = join '&' => map { join '=' => @$_ } @pairs;
+
+    push @values, b($pairs)->url_escape;
 
     return join '&' => @values;
 }
