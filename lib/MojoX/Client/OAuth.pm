@@ -3,31 +3,35 @@ package MojoX::Client::OAuth;
 use strict;
 use warnings;
 
-use base 'Mojo::Client';
+use base 'Mojo::Base';
 
+use Mojo::Client;
 use Mojo::ByteStream 'b';
 use MojoX::OAuth::Signature;
 
-sub request_token {
-    my $self = shift;
-    return $self->_tx_queue_or_process($self->build_tx('POST', @_));
+__PACKAGE__->attr(client => sub { Mojo::Client->singleton });
+
+sub request_token { shift->_make_request('POST' => @_) }
+sub access_token  { shift->_make_request('POST' => @_) }
+
+sub async {
+    my $clone = shift->new;
+    $clone->{async} = 1;
+    return $clone;
 }
 
-sub access_token {
+sub _make_request {
     my $self = shift;
-    return $self->_tx_queue_or_process($self->build_tx('POST', @_));
-}
+    my $method = shift;
+    my $url = shift;
+    my $settings = shift;
 
-sub build_tx {
-    my $self = shift;
+    my $cb; $cb = pop @_ if ref $_[-1] && ref $_[-1] eq 'CODE';
 
-    # OAuth settings
-    my $settings = $_[2];
+    my $client = $self->{async} ? $self->client->async : $self->client;
 
-    # Parent object
-    my ($tx, $cb) = $self->SUPER::build_tx(@_[0, 1, 3 .. $#_]);
+    my $tx = $client->build_tx($method => $url => @_);
 
-    # Request
     my $req = $tx->req;
 
     my $params = $settings->{params};
@@ -53,10 +57,7 @@ sub build_tx {
         map { $_ . '="' . b($params->{$_})->url_escape . '"' }
         sort keys %$params);
 
-    warn $req;
-
-    return $tx unless wantarray;
-    return $tx, $cb;
+    return $self->client->process($tx => $cb);
 }
 
 sub _nonce {
