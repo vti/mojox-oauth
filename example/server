@@ -1,0 +1,228 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use lib 'lib';
+
+use Mojo::ByteStream 'b';
+use Mojo::Parameters;
+use Mojolicious::Lite;
+
+use MojoX::OAuth::Server;
+
+my $CONSUMER_KEY    = 'ardf8DFA9asl';
+my $CONSUMER_SECRET = 'bcPsVaYJLFypxMsjSbpB2';
+
+my $CACHE = {};
+
+get '/' => sub {
+    shift->stash(
+        consumer_key    => $CONSUMER_KEY,
+        consumer_secret => $CONSUMER_SECRET
+    );
+} => 'index';
+
+post '/request_token' => sub {
+    my $self = shift;
+
+    warn $self->req;
+
+    my $oauth = MojoX::OAuth::Server->new;
+
+    unless ($oauth->process($self->req)) {
+        $self->res->code(400);
+        $self->render_text("Bad request");
+        return;
+    }
+
+    # Unknown consumer key
+    return $self->render_forbidden
+      unless $oauth->consumer_key eq $CONSUMER_KEY;
+
+    $oauth->consumer_secret($CONSUMER_SECRET);
+
+    unless ($oauth->check_signature) {
+        $self->res->code(401);
+        $self->render_text("Invalid signature");
+        return;
+    }
+
+    my $token        = $oauth->generate_token;
+    my $token_secret = $oauth->generate_token_secret;
+
+    $CACHE->{"request_token:$token"} = {
+        consumer_key => $oauth->consumer_key,
+        token_secret => $token_secret,
+        callback_url => $oauth->callback_url
+    };
+
+    $self->res->code(200);
+    $self->res->headers->content_type('application/x-www-form-urlencoded');
+    $self->res->body(
+        Mojo::Parameters->new(
+            oauth_token        => $token,
+            oauth_token_secret => $token_secret
+          )->to_string
+    );
+} => 'request_token';
+
+get '/authorize' => sub {
+    my $self = shift;
+
+    my $token = $self->param('oauth_token');
+    unless ($token && $CACHE->{"request_token:$token"}) {
+        $self->res->code(400);
+        return $self->render_text('Bad request');
+    }
+
+    my $cache = $CACHE->{"request_token:$token"};
+    use Data::Dumper;
+    warn Dumper $cache;
+
+    my $callback_url = Mojo::URL->new->parse($cache->{callback_url});
+    my $verifier     = MojoX::OAuth::Server->generate_verifier;
+
+    $cache->{verifier} = $verifier;
+
+    $self->stash(
+        callback_url => $callback_url->query(
+            oauth_token    => $token,
+            oauth_verifier => $verifier
+          )->to_string
+    );
+} => 'authorize';
+
+post '/access_token' => sub {
+    my $self = shift;
+
+    my $oauth = MojoX::OAuth::Server->new;
+
+    unless ($oauth->process($self->req)) {
+        $self->res->code(400);
+        $self->render_text("Bad request");
+        return;
+    }
+
+    # Unknown consumer key
+    unless ($oauth->consumer_key eq $CONSUMER_KEY) {
+        $self->res->code(400);
+        $self->render_text('Bad request: unknown consumer key');
+        return;
+    }
+
+    my $token    = $oauth->token;
+    my $verifier = $oauth->verifier;
+
+    my $cache = $CACHE->{"request_token:$token"};
+
+    unless ($token && $cache && $verifier && $verifier eq $cache->{verifier})
+    {
+        $self->res->code(400);
+        return $self->render_text('Bad request: token');
+    }
+
+    $oauth->consumer_secret($CONSUMER_SECRET);
+    $oauth->token_secret($cache->{token_secret});
+
+    unless ($oauth->check_signature) {
+        $self->res->code(400);
+        $self->render_text('Bad request: invalid signature');
+        return;
+    }
+
+    $token = $oauth->generate_token;
+    my $token_secret = $oauth->generate_token_secret;
+
+    $CACHE->{"access_token:$token"} = {
+        consumer_key => $oauth->consumer_key,
+        token_secret => $token_secret
+    };
+
+    $self->res->code(200);
+    $self->res->headers->content_type('application/x-www-form-urlencoded');
+    $self->res->body(
+        Mojo::Parameters->new(
+            oauth_token        => $token,
+            oauth_token_secret => $token_secret
+          )->to_string
+    );
+} => 'access_token';
+
+post '/resource' => sub {
+    my $self = shift;
+
+    my $oauth = MojoX::OAuth::Server->new;
+
+    unless ($oauth->process($self->req)) {
+        $self->res->code(400);
+        $self->render_text("Bad request");
+        return;
+    }
+
+    # Unknown consumer key
+    unless ($oauth->consumer_key eq $CONSUMER_KEY) {
+        $self->res->code(401);
+        $self->render_text('Unauthorized');
+        return;
+    }
+
+    # Missing token
+    my $token = $oauth->token;
+    unless ($token) {
+        $self->res->code(400);
+        $self->render_text('Bad request: missing token');
+        return;
+    }
+
+    # Unknown token
+    my $cache = $CACHE->{"access_token:$token"};
+    unless ($cache) {
+        $self->res->code(401);
+        $self->render_text('Unauthorized');
+        return;
+    }
+
+    $oauth->consumer_secret($CONSUMER_SECRET);
+    $oauth->token_secret($cache->{token_secret});
+
+    unless ($oauth->check_signature) {
+        $self->res->code(400);
+        $self->render_text('Bad request: invalid signature');
+        return;
+    }
+
+    warn 'OK!' x 80;
+
+} => 'resource';
+
+app->start;
+
+__DATA__
+
+@@ index.html.ep
+<html>
+<body>
+    <div style="width:500px;margin:auto">
+        <h1>Sandbox OAuth 1.0a provider</h1>
+
+        consumer_key = <%= $consumer_key %><br />
+        consumer_secret = <%= $consumer_secret %><br /><br />
+
+        request token url: <%= url_for('request_token')->to_abs %><br />
+        user authorization url: <%= url_for('authorize')->to_abs %><br />
+        access token url: <%= url_for('access_token')->to_abs %><br /><br />
+
+        resource url: <%= url_for('resource')->to_abs %>
+    </div>
+</body>
+</html>
+
+@@ authorize.html.ep
+
+<h1>Authorize?</h1>
+
+<%= link_to $callback_url => {%>Yes<%}%>
+
+@@ resource.html.ep
+SUCCESS!!1

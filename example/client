@@ -1,0 +1,159 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use lib 'lib';
+
+use Mojolicious::Lite;
+
+use MojoX::OAuth::Client;
+
+my $resource_url = 'http://localhost:4000/resource';
+#my $resource_url = 'http://oauth-sandbox.sevengoslings.net/three_legged';
+
+my $oauth = MojoX::OAuth::Client->new(
+    consumer_key           => 'ardf8DFA9asl',
+    consumer_secret        => 'bcPsVaYJLFypxMsjSbpB2',
+    request_token_url      => 'http://localhost:4000/request_token',
+    user_authorization_url => 'http://localhost:4000/authorize',
+    access_token_url       => 'http://localhost:4000/access_token',
+    callback_url           => 'http://localhost:3000/ready'
+
+    #consumer_key    => 'b145c09648a6ebcf',
+    #consumer_secret => '9cb9d683d61435345ef694becdc4',
+    #request_token_url =>
+      #'http://oauth-sandbox.sevengoslings.net/request_token',
+    #user_authorization_url =>
+      #'http://oauth-sandbox.sevengoslings.net/authorize',
+    #access_token_url => 'http://oauth-sandbox.sevengoslings.net/access_token',
+    #callback_url     => 'http://localhost:3000/ready'
+);
+
+my $CACHE = {};
+
+get '/' => sub {
+} => 'index';
+
+get '/login' => sub {
+    my $self = shift;
+
+    $self->pause;
+
+    $oauth->request_token(
+        sub {
+            my $oauth = shift;
+
+            unless ($oauth->res) {
+                $self->render_exception('Foo');
+                return $self->finish;
+            }
+
+            unless ($oauth->success) {
+                $self->render_exception('Bad response');
+                return $self->finish;
+            }
+
+            # Save request token
+            $CACHE->{"request_token:" . $oauth->token} = $oauth->token_secret;
+
+            # Redirect client the authorization url
+            $self->redirect_to($oauth->user_authorization_url);
+
+            return $self->finish;
+        }
+      )->process;
+} => 'login';
+
+get '/ready' => sub {
+    my $self = shift;
+
+    my $token        = $self->param('oauth_token');
+    my $token_secret = $CACHE->{"request_token:" . $token};
+    my $verifier     = $self->param('oauth_verifier');
+
+    unless ($token && $token_secret && $verifier) {
+        $self->res->code(400);
+        $self->render_text('Bad request');
+        return $self->finish;
+    }
+
+    $self->pause;
+
+    $oauth->access_token(
+        {   token        => $token,
+            token_secret => $token_secret,
+            verifier     => $verifier
+        } => sub {
+            my $oauth = shift;
+
+            unless ($oauth->res) {
+                $self->render_exception('Ooops');
+                return $self->finish;
+            }
+
+            unless ($oauth->success) {
+                $self->res->code(400);
+                $self->render_text('Bad response');
+                return $self->finish;
+            }
+
+            # Delete request token
+            delete $CACHE->{"request_token:$token"};
+
+            # Save access token
+            $CACHE->{"access_token:" . $oauth->token} = $oauth->token_secret;
+
+            # Save token to user's session, so we can identify him later
+            $self->session(token => $oauth->token);
+
+            $self->redirect_to('resource');
+
+            return $self->finish;
+        }
+    )->process;
+} => 'ready';
+
+get '/resource' => sub {
+    my $self = shift;
+
+    my $token = $self->session('token');
+    my $token_secret = $CACHE->{"access_token:$token"};
+
+    unless ($token && $token_secret) {
+        $self->res->code(401);
+        $self->render_text('Authorization required');
+        return;
+    }
+
+    $self->pause;
+
+    $oauth->request_resource(
+        $resource_url =>
+          {token => $token, token_secret => $token_secret} => sub {
+            my $oauth = shift;
+
+            unless ($oauth->res) {
+                $self->render_exception('Ooops');
+                return $self->finish;
+            }
+
+            unless ($oauth->success) {
+                $self->redirect_to('login');
+                return $self->finish;
+            }
+
+            $self->render_text($oauth->res->body);
+
+            return $self->finish;
+        }
+    )->process;
+} => 'resource';
+
+app->start;
+
+__DATA__
+
+@@ index.html.ep
+
+<%= link_to 'login' => {%>Login<%}%>

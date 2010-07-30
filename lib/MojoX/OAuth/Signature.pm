@@ -14,17 +14,33 @@ __PACKAGE__->attr('url');
 __PACKAGE__->attr([qw/consumer_secret token_secret/] => '');
 __PACKAGE__->attr(_params => sub { Mojo::Parameters->new });
 
+sub sign {
+    my $self = shift;
+    my $params = shift;
+
+    $self->params($params);
+
+    $params->{oauth_signature} = $self->to_string;
+
+    return $self;
+}
+
 sub params {
     my $self = shift;
 
     return $self->_params unless @_;
 
-    my $params = ref $_[0] && ref $_[0] eq 'HASH' ? $_[0] : {@_};
+    if (ref $_[0] && ref $_[0] eq 'Mojo::Parameters') {
+        $self->_params($_[0]);
+    }
+    else {
+        my $params = ref $_[0] && ref $_[0] eq 'HASH' ? $_[0] : {@_};
 
-    foreach my $key (keys %$params) {
-        next if $key eq 'realm';
+        foreach my $key (keys %$params) {
+            next if $key eq 'realm';
 
-        $self->_params->append($key => $params->{$key});
+            $self->_params->append($key => $params->{$key});
+        }
     }
 
     return $self;
@@ -45,6 +61,8 @@ sub base_string {
 
     # Add params
     my $params = $self->params->to_hash;
+    delete $params->{oauth_signature};
+    delete $params->{realm};
 
     # Preparing pairs
     my @pairs;
@@ -90,6 +108,7 @@ sub to_string {
     }
     else {
         my $base_string = $self->base_string;
+        warn "base_string=$base_string";
 
         # Calculating digest
         my $digest = '';
